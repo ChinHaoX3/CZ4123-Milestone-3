@@ -29,61 +29,43 @@ import org.apache.hadoop.fs.Path;
 
 public class WeatherMapReduce {
 
-	// initialisation
-	public static ArrayList<String> oldCentroids = new ArrayList<String>();
-	public static ArrayList<String> newCentroids = new ArrayList<String>();
-	public static double threshold = 0.001;
-	public static int k = 4;
+	// initialisation of variables
+	// threshold to check to run another iteration of kmeans, k to indicate no of centroids
+	public final static double threshold = 0.001;
+	public final static int k = 4;
 	
-	// Read centroids from HDFS 
+	// Read centroids from HDFS based on job 3 iteration
 	public static String[] readCentroids(Configuration conf, String pathString) throws IOException, FileNotFoundException{
 		
-		/*
-		String[] newCentroids = new String[k];
-		
-		// HDFS
-		FileSystem hdfs = FileSystem.get(conf);
-		FileStatus[] status = hdfs.listStatus(new Path(pathString));
-		
-		for(int i = 0; i < status.length; i++) {
-			if(!status[i].getPath().toString().endsWith("_SUCCESS")) {
-				BufferedReader br = new BufferedReader(new InputStreamReader(hdfs.open(status[i].getPath())));
-				String[] keyValueSplit = br.readLine().split("\t");
-				int centroidID = Integer.parseInt(keyValueSplit[0]);
-				String[] values = keyValueSplit[1].split(",");
-				
-				System.out.println("status length: " + status.length);
-				System.out.println("key: " + keyValueSplit[0]);
-				System.out.println("values: " + keyValueSplit[1]);
-				
-				newCentroids[centroidID] = values[0] + "," + values[1];
-				br.close();
-			}
-		}
-		return newCentroids;
-		*/
 		//https://stackoverflow.com/questions/14573209/read-a-text-file-from-hdfs-line-by-line-in-mapper
+		
+		// create array variable to store centroids retrieved from job 3 output
 		String[] newCentroids = new String[k];
 		
+		// open file location 
 		Path path = new Path(pathString);
 		FileSystem hdfs = FileSystem.get(conf);
 		BufferedReader br = new BufferedReader(new InputStreamReader(hdfs.open(path)));
 		
+		// read file
 		try {
 			String line;
 			line = br.readLine();
 			
 			while (line != null) {
-				
+				// split the line to key and value pair
 				String[] keyValueSplit = line.split("\t");
 				int centroidID = Integer.parseInt(keyValueSplit[0]);
+				// split the values to temperature and humidity 
 				String[] values = keyValueSplit[1].split(",");
 				
 				System.out.println("key: " + keyValueSplit[0]);
 				System.out.println("values: " + keyValueSplit[1]);
 				
+				// assign the value to the array variable
 				newCentroids[centroidID] = values[0] + "," + values[1];
-				// read the next line 
+				
+				// read the next line to prevent infinite loops
 				line = br.readLine(); 
 			}
 		} catch(Exception e) {
@@ -92,43 +74,52 @@ public class WeatherMapReduce {
 			br.close();
 			
 		}
+		// return result
 		return newCentroids;
 	}
 	
-	// First Map Function
+	// First Map Function - to get average temperature and humidity based on 1 year
 	public static class FirstMap extends Mapper<LongWritable, Text, Text, Text> {
-		public void map(LongWritable key, Text value, Context context) throws IOException, InterruptedException {
+		public void map(LongWritable key, Text values, Context context) throws IOException, InterruptedException {
+			// input: key = index | values = station, timestamp, temperature, humidity
+			// output: key = station, year | values = temperature, humidity
+			
 			// Create format for date time
 			DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
 			// read csv files
-			String line = value.toString();
+			String line = values.toString();
 			// split the line
 			String[] row = line.split(",");
 			// assign key - station,year
-
+			
+			// M equals null value, ensure only non null value is passed
 			if (!row[2].equals("M") && !row[3].equals("M")) {
+				// format the timestamp
 				LocalDateTime datetime = LocalDateTime.parse(row[1], formatter);
+				// pass key  as key = station, year
 				String strKey = row[0] + "," + datetime.getYear();
-				// int strKey = Integer.parseInt(row[0]);
-				// temperature and humidity
+				// pass values as values = temperature and humidity
 				String strValue = row[2] + "," + row[3];
+				// write map output
 				context.write(new Text(strKey), new Text(strValue));
 			}
 		}
 	}
 
-	// First Reduce Function
+	// First Reduce Function - to get average temperature and humidity based on 1 year
 	public static class FirstReduce extends Reducer<Text, Text, Text, Text> {
 		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-			// key is station,month,year
-
+			// input: key = station, year | values = iterable(temperature, humidity)
+			// output: key = station, year | values = avgtemperature, avghumidity
 			// value is list inside list
+			
+			// initialisation variables
 			int count = 0;
 			double temp = 0;
 			double humidity = 0;
 
-			// ArrayList<String> valuesList = new ArrayList<>();
+			// iterate through iterable
 			for (Text x : values) {
 				// [temperature, humidity]
 				String line = x.toString();
@@ -136,51 +127,47 @@ public class WeatherMapReduce {
 				count++;
 				temp = temp + Double.parseDouble(row[0]);
 				humidity = humidity + Double.parseDouble(row[1]);
-				// valuesList.add(x.toString());
 			}
+			
+			// compute the average temperature and humidity + format to string
 			double avgTemp = temp / count;
 			double avgHumidity = humidity / count;
 			String strValue = avgTemp + "," + avgHumidity;
-
+			
+			// write reduce output
 			context.write(key, new Text(strValue));
-
-			// context.write(key, new Text(valuesList.toString()));
 		}
 	}
 
-	// Second Map Function
+	// Second Map Function - to get average temperature and humidity based on all the years
 	public static class SecondMap extends Mapper<Text, Text, Text, Text> {
 		public void map(Text key, Text values, Context context) throws IOException, InterruptedException {
-			// input: key=station,year value=avgtemp,avghumidity
-
-//			String line = values.toString();
-//			String[] row = line.split("\t");
-//
-//			String strKey = row[0];
-//			String[] row2 = strKey.split(",");
-//			String newStrKey = row2[0];
-//
-//			// write output as key=station value=avgtemp, avghumidity
-//			context.write(new Text(newStrKey), new Text(row[1]));
-
+			// input: key = station, year | values = avgtemperature, avghumidity
+			// output: key = station | values = avgtemperature, avghumidity
 			// assume key and value is set nicely
-
+			
+			// remove the year from key
 			String line = key.toString();
 			String[] row = line.split(",");
 			String newStrKey = row[0];
-
+			
+			// write map output
 			context.write(new Text(newStrKey), values);
 		}
 	}
 
-	// Reduce Function
+	// Reduce Function - to get average temperature and humidity based on all the years
 	public static class SecondReduce extends Reducer<Text, Text, Text, Text> {
 		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-
+			// input: key = station, year | values = iterable(avgtemperature, avghumidity)
+			// output: key = station | values = avgtemperature, avghumidity
+			
+			// initialise variables
 			int count = 0;
 			double temp = 0;
 			double humidity = 0;
-
+			
+			// iterate through iterable to sum up temperature, humidity, count
 			for (Text x : values) {
 				String line = x.toString();
 				String[] row = line.split(",");
@@ -188,9 +175,12 @@ public class WeatherMapReduce {
 				temp = temp + Double.parseDouble(row[0]);
 				humidity = humidity + Double.parseDouble(row[1]);
 			}
+			// compute the average temperature and humidity + format to string
 			double avgTemp = temp / count;
 			double avgHumidity = humidity / count;
 			String strValue = avgTemp + "," + avgHumidity;
+			
+			// write reduce output
 			context.write(key, new Text(strValue));
 
 		}
@@ -200,7 +190,7 @@ public class WeatherMapReduce {
 	public static class KMeansMap extends Mapper<Text, Text, Text, Text> {
 		public void map(Text key, Text values, Context context) throws IOException, InterruptedException {
 			// input key = station, values = temperature, humidity
-			// output key = index, values = station,temperature,humidity
+			// output key = centroidID, values = station,temperature,humidity
 
 			// split values to temperature and humidity
 			String stationValues[] = values.toString().split(",");
@@ -221,7 +211,7 @@ public class WeatherMapReduce {
 
 			int kmeansIndex = 0;
 
-			// for loop to check assign clusters
+			// for loop to check and assign clusters
 			for (int i = 1; i < k; i++) {
 				String centroidValues[] = conf.get("oldcentroid:" + i).split(",");
 				tempDistance = Math.abs(Double.parseDouble(centroidValues[0]) - Double.parseDouble(stationValues[0]));
@@ -235,10 +225,11 @@ public class WeatherMapReduce {
 				}
 
 			}
+			
+			// format values
 			String strValues = key.toString() + "," + stationValues[0] + "," + stationValues[1];
 			
-			System.out.println(strValues);
-			
+			// write map output
 			context.write(new Text(Integer.toString(kmeansIndex)), new Text(strValues));
 		}
 	}
@@ -246,59 +237,40 @@ public class WeatherMapReduce {
 	// Kmeans Reduce Function - recompute centroids values
 	public static class KMeansReduce extends Reducer<Text, Text, Text, Text> {
 		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-			// input key = index, iterable values = station,temperature,humidity
-			// output key = indexID, values = temperature, humidity
+			// input key = centroidID, iterable values = station,temperature,humidity
+			// output key = centroidID, values = temperature, humidity
+			
+			// initialise variable
 			double allTemp = 0;
 			double allHumidity = 0;
 			int count = 0;
 			
+			// iterate through iterable 
 			for (Text x : values) {
 				String line = x.toString();
-				
-				System.out.println("test: " + x);
-				System.out.println("test: " + line);
-				
 				String[] row = line.split(",");
-
+				
 				// sum up temperature and humidity
 				allTemp = allTemp + Double.parseDouble(row[1]);
 				allHumidity = allHumidity + Double.parseDouble(row[2]);
 				count++;
-				
-				/*
-				// write output
-				context.write(new Text(row[0]), new Text(row[1] + "," + row[2]));
-				*/
 			}
-
+			
+			// recompute the centroid cluster
 			double avgTemp = allTemp / count;
 			double avgHumidity = allHumidity / count;
 			String strValues = avgTemp + "," + avgHumidity;
 			
-			
+			// write reduce output
 			context.write(key, new Text(strValues));
-			
-			/*
-			
-			// replace values in newCentroids
-			// error config not saved 
-			Configuration conf = context.getConfiguration();
-			conf.unset("newcentroid:" + Integer.parseInt(key.toString()));
-			conf.set("newcentroid:" + Integer.parseInt(key.toString()), strValue);
-			
-			System.out.println("newcentroid:" + Integer.parseInt(key.toString()));
-			System.out.println(strValue);
-			
-			*/
-			
 		}
 	}
 
-	// Finalise MapReduce Function
+	// Finalise Map Function - assign clusters
 	public static class FinaliseMap extends Mapper<Text, Text, Text, Text> {
 		public void map(Text key, Text values, Context context) throws IOException, InterruptedException {
 			// input key = station, values = temperature, humidity
-			// output key = index, values = station,temperature,humidity
+			// output key = centroidID, values = station,temperature,humidity
 
 			// split values to temperature and humidity
 			String stationValues[] = values.toString().split(",");
@@ -334,17 +306,20 @@ public class WeatherMapReduce {
 
 			}
 			String strValues = key.toString() + "," + stationValues[0] + "," + stationValues[1];
+			// write map output
 			context.write(new Text(Integer.toString(kmeansIndex)), new Text(strValues));
 		}
 	}
-
+	
+	// Finalise Reduce function - output stations based on assigned clusters
 	public static class FinaliseReduce extends Reducer<Text, Text, Text, Text> {
 		public void reduce(Text key, Iterable<Text> values, Context context) throws IOException, InterruptedException {
-			// input key = index, iterable values = station,temperature,humidity
-			// output key = index = station
+			// input key = centroidID, iterable values = station,temperature,humidity
+			// output key = centroidID = list of stations
 			
 			StringJoiner joiner = new StringJoiner(",");
 			
+			// iterate through iterable
 			for (Text x : values) {
 				String line = x.toString();
 				String[] row = line.split(",");
@@ -352,6 +327,7 @@ public class WeatherMapReduce {
 				joiner.add(row[0]);
 			}
 			String result = joiner.toString();
+			// write reduce output
 			context.write(key, new Text(result));
 		}
 	}
@@ -392,30 +368,17 @@ public class WeatherMapReduce {
 
 		// K-means MapReduce Driver Code, loop using while condition, check using
 		// if-else statement
-		// initialisation
-		
-//		conf.set("oldcentroid:" + 0, "17" + "," + "49");
-//		conf.set("oldcentroid:" + 1, "14" + "," + "73");
-//		conf.set("oldcentroid:" + 2, "-2" + "," + "77");
-//		conf.set("oldcentroid:" + 3, "27" + "," + "76");
-//		conf.set("newcentroid:" + 0, "17" + "," + "49");
-//		conf.set("newcentroid:" + 1, "14" + "," + "73");
-//		conf.set("newcentroid:" + 2, "-2" + "," + "77");
-//		conf.set("newcentroid:" + 3, "27" + "," + "76"); 
+		// initialisation of centroid
 
 		conf.set("oldcentroid:" + 0, "0" + "," + "0");
 		conf.set("oldcentroid:" + 1, "10" + "," + "10");
 		conf.set("oldcentroid:" + 2, "20" + "," + "20");
 		conf.set("oldcentroid:" + 3, "30" + "," + "30");
-		conf.set("newcentroid:" + 0, "0" + "," + "0");
-		conf.set("newcentroid:" + 1, "10" + "," + "10");
-		conf.set("newcentroid:" + 2, "20" + "," + "20");
-		conf.set("newcentroid:" + 3, "30" + "," + "30"); 		
 		
-		
-
+		// initialise variable
 		boolean centroidsConverge = false;
 		
+		// loop till centroids converge
 		while (!centroidsConverge) {
 			Job job3 = Job.getInstance(conf);
 			job3.setJarByClass(WeatherMapReduce.class);
@@ -432,8 +395,10 @@ public class WeatherMapReduce {
 			// assume is true first
 			centroidsConverge = true;
 			
+			// retrieve new centroids values from reduce output
 			String[] newCentroids = readCentroids(conf, args[1] + "/iteration_" + iteration + "/part-r-00000");
-
+			
+			// for loop to ensure all centroids values converge
 			for (int i = 0; i < k; i++) {
 				boolean checkTemp = false;
 				boolean checkHumidity = false;
@@ -453,7 +418,8 @@ public class WeatherMapReduce {
 			}
 			// increase iteration value
 			iteration++;
-
+			
+			// assign new centroids value to old centroids values if convergence fails 
 			if (!centroidsConverge) {
 				for (int i = 0; i < k; i++) {
 					conf.unset("oldcentroid:" + i);
