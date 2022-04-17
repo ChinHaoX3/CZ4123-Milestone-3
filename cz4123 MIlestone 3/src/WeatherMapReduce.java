@@ -9,16 +9,12 @@ import java.util.Random;
 import java.util.StringJoiner;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import org.apache.hadoop.io.IntWritable;
 import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.Mapper;
 import org.apache.hadoop.mapreduce.Reducer;
-import org.apache.hadoop.mapreduce.Reducer.Context;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.mapreduce.Job;
-import org.apache.hadoop.mapreduce.lib.input.TextInputFormat;
-import org.apache.hadoop.mapreduce.lib.output.TextOutputFormat;
 import org.apache.hadoop.mapreduce.lib.input.FileInputFormat;
 import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.hadoop.mapreduce.lib.input.KeyValueTextInputFormat;
@@ -175,24 +171,110 @@ public class WeatherMapReduce {
 			double temp = 0;
 			double humidity = 0;
 			String strValue = null;
+			// for min, max, median function
 			ArrayList<Double> tempList = new ArrayList<Double>();
 			ArrayList<Double> humidityList = new ArrayList<Double>();
+			
+			// get configuration 
+			Configuration conf = context.getConfiguration();
+			String method = conf.get("method");
+			
+			if(method.equals("median")) {
+				// iterate through iterable
+				for (Text x : values) {
+					// [temperature, humidity]
+					String line = x.toString();
+					String[] row = line.split(",");
+					tempList.add(Double.parseDouble(row[0]));
+					humidityList.add(Double.parseDouble(row[1]));
+				}
+				
+				// sort the list
+				Collections.sort(tempList);
+				Collections.sort(humidityList);
+				
+				// assign median value
+				// http://www.java2s.com/example/java-utility-method/median/median-arraylist-double-values-82543.html
+				if(tempList.size() % 2 == 1) {
+					temp = tempList.get((tempList.size() + 1) / 2 - 1);
+					humidity = humidityList.get((humidityList.size() + 1) / 2 - 1);
+				}
+				else {
+					// temperature
+					double lowerTemp = tempList.get(tempList.size() / 2 - 1);
+		            double upperTemp = tempList.get(tempList.size() / 2);
 
-			// iterate through iterable
-			for (Text x : values) {
-				// [temperature, humidity]
-				String line = x.toString();
-				String[] row = line.split(",");
-				count++;
-				temp = temp + Double.parseDouble(row[0]);
-				humidity = humidity + Double.parseDouble(row[1]);
+		            temp = (lowerTemp + upperTemp) / 2.0;
+		            
+		            // humidity
+		            double lowerHumidity = humidityList.get(humidityList.size() / 2 - 1);
+		            double upperHumidity = humidityList.get(humidityList.size() / 2);
+
+		            humidity = (lowerHumidity + upperHumidity) / 2.0;
+				}
+				strValue = temp + "," + humidity;
 			}
+			else if(method.equals("min")) {
+				// iterate through iterable
+				for (Text x : values) {
+					// [temperature, humidity]
+					String line = x.toString();
+					String[] row = line.split(",");
+					tempList.add(Double.parseDouble(row[0]));
+					humidityList.add(Double.parseDouble(row[1]));
+				}
+				
+				// sort the list
+				Collections.sort(tempList);
+				Collections.sort(humidityList);
+				
+				// assign min
+				temp = tempList.get(0);
+				humidity = humidityList.get(0);
+				
+				strValue = temp + "," + humidity;
+			}
+			else if(method.equals("max")) {
+				// iterate through iterable
+				for (Text x : values) {
+					// [temperature, humidity]
+					String line = x.toString();
+					String[] row = line.split(",");
+					tempList.add(Double.parseDouble(row[0]));
+					humidityList.add(Double.parseDouble(row[1]));
+				}
+				
+				// sort the list
+				Collections.sort(tempList);
+				Collections.sort(humidityList);
+				
+				// find the size
+				int n = tempList.size();
+				
+				// assign max
+				temp = tempList.get(n - 1);
+				humidity = humidityList.get(n - 1);
+				
+				strValue = temp + "," + humidity;
+			}
+			// default or mean
+			else {
+				// iterate through iterable
+				for (Text x : values) {
+					// [temperature, humidity]
+					String line = x.toString();
+					String[] row = line.split(",");
+					count++;
+					temp = temp + Double.parseDouble(row[0]);
+					humidity = humidity + Double.parseDouble(row[1]);
+				}
 
-			// compute the average temperature and humidity + format to string
-			double avgTemp = temp / count;
-			double avgHumidity = humidity / count;
-			strValue = avgTemp + "," + avgHumidity;
-
+				// compute the average temperature and humidity + format to string
+				double avgTemp = temp / count;
+				double avgHumidity = humidity / count;
+				strValue = avgTemp + "," + avgHumidity;
+			}
+			
 			// write reduce output
 			context.write(key, new Text(strValue));
 		}
@@ -478,10 +560,15 @@ public class WeatherMapReduce {
 		Configuration conf = new Configuration();
 
 		// set values based on inputs
-		// available methods: mean, min, max
-//		conf.set("method:", args[4]);
-//		k = Integer.parseInt(args[2]);
-//		dataSize = Integer.parseInt(args[3]);
+		// available methods: median, mean(avg)
+		try {
+			conf.set("method", args[2]);
+		} catch(Exception e) {
+//			e.printStackTrace();
+			conf.set("method", "mean");
+		}
+		
+
 
 		// First MapReduce Driver Code
 		Job job = Job.getInstance(conf);
