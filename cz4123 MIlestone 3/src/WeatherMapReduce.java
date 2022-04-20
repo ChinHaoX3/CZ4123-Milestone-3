@@ -28,7 +28,7 @@ public class WeatherMapReduce {
 	// centroids
 	public final static double threshold = 0.001;
 	public static int k = 4;
-	public static int dataSize = 35;
+	public static int dataSize = 32;
 
 	// Read centroids from HDFS based on job 3 iteration
 	public static String[] readCentroids(Configuration conf, String pathString)
@@ -53,7 +53,7 @@ public class WeatherMapReduce {
 				// split the line to key and value pair
 				String[] keyValueSplit = line.split("\t");
 				int centroidID = Integer.parseInt(keyValueSplit[0]);
-				
+
 				// assign the value to the array variable
 				newCentroids[centroidID] = keyValueSplit[1];
 
@@ -127,6 +127,28 @@ public class WeatherMapReduce {
 		return oldCentroids;
 	}
 
+	public static String[] centroidsInit2() {
+		String[] oldCentroids = new String[k];
+
+		oldCentroids[0] = "25.1006791;26.35799778;27.44876002;27.9251813;27.25231388;26.06718851;25.58552712;25.80387655;26.63731523;"
+				+ "27.11733535;26.72576198;25.67240075,76.73102315;75.21675327;75.53543488;73.75664688;73.05795495;76.32875389;77.25904829;"
+				+ "76.39262479;75.85016531;75.62142427;72.74661157;75.09638404";
+
+		oldCentroids[1] = "17.17580105;19.23602543;20.74712271;22.00578838;22.79875658;23.96050118;23.49556867;23.57226129;23.35334141;"
+				+ "22.54666405;19.77682044;17.52889883,44.04263278;39.35707501;37.01085605;31.11067463;33.50676538;43.51047015;50.5632079;"
+				+ "51.38787451;51.22445073;45.30493944;43.40988249;43.85481327";
+
+		oldCentroids[2] = "-11.37791125;-8.88550606;-2.46782327;5.83245943;12.76368631;17.57740719;19.51253796;17.65210581;11.75446767;"
+				+ "4.41493321;-4.63420549;-8.96597388,78.4160057;75.74876254;68.87341752;59.58013801;59.23489847;64.41462075;70.61054862;"
+				+ "72.43022352;74.32342214;73.8321926;79.32049237;81.06695815";
+
+		oldCentroids[3] = "6.79643096;8.86890806;12.93279208;17.14892561;21.46365705;24.37250225;26.51255365;26.78874031;23.15902877;"
+				+ "17.9468298;13.05389539;8.12296815,74.91861627;71.89637188;71.10172344;71.20357909;72.70996632;78.43492434;78.73857562;"
+				+ "77.65831353;78.56124365;78.19998888;76.53555707;75.24748671";
+
+		return oldCentroids;
+	}
+
 	// First Map Function - to get average temperature and humidity based on 1 year
 	public static class FirstMap extends Mapper<LongWritable, Text, Text, Text> {
 		public void map(LongWritable key, Text values, Context context) throws IOException, InterruptedException {
@@ -174,12 +196,12 @@ public class WeatherMapReduce {
 			// for min, max, median function
 			ArrayList<Double> tempList = new ArrayList<Double>();
 			ArrayList<Double> humidityList = new ArrayList<Double>();
-			
-			// get configuration 
+
+			// get configuration
 			Configuration conf = context.getConfiguration();
 			String method = conf.get("method");
-			
-			if(method.equals("median")) {
+
+			if (method.equals("median")) {
 				// iterate through iterable
 				for (Text x : values) {
 					// [temperature, humidity]
@@ -188,33 +210,31 @@ public class WeatherMapReduce {
 					tempList.add(Double.parseDouble(row[0]));
 					humidityList.add(Double.parseDouble(row[1]));
 				}
-				
+
 				// sort the list
 				Collections.sort(tempList);
 				Collections.sort(humidityList);
-				
+
 				// assign median value
 				// http://www.java2s.com/example/java-utility-method/median/median-arraylist-double-values-82543.html
-				if(tempList.size() % 2 == 1) {
+				if (tempList.size() % 2 == 1) {
 					temp = tempList.get((tempList.size() + 1) / 2 - 1);
 					humidity = humidityList.get((humidityList.size() + 1) / 2 - 1);
-				}
-				else {
+				} else {
 					// temperature
 					double lowerTemp = tempList.get(tempList.size() / 2 - 1);
-		            double upperTemp = tempList.get(tempList.size() / 2);
+					double upperTemp = tempList.get(tempList.size() / 2);
 
-		            temp = (lowerTemp + upperTemp) / 2.0;
-		            
-		            // humidity
-		            double lowerHumidity = humidityList.get(humidityList.size() / 2 - 1);
-		            double upperHumidity = humidityList.get(humidityList.size() / 2);
+					temp = (lowerTemp + upperTemp) / 2.0;
 
-		            humidity = (lowerHumidity + upperHumidity) / 2.0;
+					// humidity
+					double lowerHumidity = humidityList.get(humidityList.size() / 2 - 1);
+					double upperHumidity = humidityList.get(humidityList.size() / 2);
+
+					humidity = (lowerHumidity + upperHumidity) / 2.0;
 				}
 				strValue = temp + "," + humidity;
-			}
-			else if(method.equals("min")) {
+			} else if (method.equals("min")) {
 				// iterate through iterable
 				for (Text x : values) {
 					// [temperature, humidity]
@@ -223,18 +243,17 @@ public class WeatherMapReduce {
 					tempList.add(Double.parseDouble(row[0]));
 					humidityList.add(Double.parseDouble(row[1]));
 				}
-				
+
 				// sort the list
 				Collections.sort(tempList);
 				Collections.sort(humidityList);
-				
+
 				// assign min
 				temp = tempList.get(0);
 				humidity = humidityList.get(0);
-				
+
 				strValue = temp + "," + humidity;
-			}
-			else if(method.equals("max")) {
+			} else if (method.equals("max")) {
 				// iterate through iterable
 				for (Text x : values) {
 					// [temperature, humidity]
@@ -243,18 +262,18 @@ public class WeatherMapReduce {
 					tempList.add(Double.parseDouble(row[0]));
 					humidityList.add(Double.parseDouble(row[1]));
 				}
-				
+
 				// sort the list
 				Collections.sort(tempList);
 				Collections.sort(humidityList);
-				
+
 				// find the size
 				int n = tempList.size();
-				
+
 				// assign max
 				temp = tempList.get(n - 1);
 				humidity = humidityList.get(n - 1);
-				
+
 				strValue = temp + "," + humidity;
 			}
 			// default or mean
@@ -274,7 +293,7 @@ public class WeatherMapReduce {
 				double avgHumidity = humidity / count;
 				strValue = avgTemp + "," + avgHumidity;
 			}
-			
+
 			// write reduce output
 			context.write(key, new Text(strValue));
 		}
@@ -314,7 +333,6 @@ public class WeatherMapReduce {
 			for (Text x : values) {
 				String line = x.toString();
 				String[] row = line.split(",");
-				System.out.println(x);
 				tempArr[Integer.parseInt(row[0]) - 1] = row[1];
 				humidityArr[Integer.parseInt(row[0]) - 1] = row[2];
 			}
@@ -357,8 +375,8 @@ public class WeatherMapReduce {
 			Configuration conf = context.getConfiguration();
 
 			String[] centroidOne = conf.get("oldcentroid:0").split(",");
-			String centroidOneTempArr[] = centroidOne[0].split(";");
-			String centroidOneHumidityArr[] = centroidOne[1].split(";");
+			String[] centroidOneTempArr = centroidOne[0].split(";");
+			String[] centroidOneHumidityArr = centroidOne[1].split(";");
 
 			for (int i = 0; i < 12; i++) {
 				tempDistance = tempDistance
@@ -375,8 +393,8 @@ public class WeatherMapReduce {
 			for (int i = 1; i < k; i++) {
 
 				String[] centroidValues = conf.get("oldcentroid:" + i).split(",");
-				String centroidTempArr[] = centroidValues[0].split(";");
-				String centroidHumidityArr[] = centroidValues[1].split(";");
+				String[] centroidTempArr = centroidValues[0].split(";");
+				String[] centroidHumidityArr = centroidValues[1].split(";");
 
 				// reset variables
 				tempDistance = 0;
@@ -417,8 +435,8 @@ public class WeatherMapReduce {
 			int count = 0;
 			Double allTempArr[] = new Double[12];
 			Double allHumidityArr[] = new Double[12];
-			
-			// initialise arrayvalues to 0 to prevent null pointer exception 
+
+			// initialise arrayvalues to 0 to prevent null pointer exception
 			for (int i = 0; i < 12; i++) {
 				allTempArr[i] = 0.0;
 				allHumidityArr[i] = 0.0;
@@ -432,7 +450,7 @@ public class WeatherMapReduce {
 				String[] stationValues = line.split(",");
 				String curTempArr[] = stationValues[0].split(";");
 				String curHumidityArr[] = stationValues[1].split(";");
-				
+
 				// loop through the months
 				for (int i = 0; i < 12; i++) {
 					allTempArr[i] = allTempArr[i] + Double.parseDouble(curTempArr[i]);
@@ -440,14 +458,12 @@ public class WeatherMapReduce {
 				}
 				count++;
 			}
-			
+
 			// recompute the centroid cluster
 			for (int j = 0; j < 12; j++) {
 				allTempArr[j] = allTempArr[j] / count;
 				allHumidityArr[j] = allHumidityArr[j] / count;
 			}
-			
-
 
 			// format to string
 			StringJoiner joiner = new StringJoiner(";");
@@ -488,8 +504,8 @@ public class WeatherMapReduce {
 			Configuration conf = context.getConfiguration();
 
 			String[] centroidOne = conf.get("oldcentroid:0").split(",");
-			String centroidOneTempArr[] = centroidOne[0].split(";");
-			String centroidOneHumidityArr[] = centroidOne[1].split(";");
+			String[] centroidOneTempArr = centroidOne[0].split(";");
+			String[] centroidOneHumidityArr = centroidOne[1].split(";");
 
 			for (int i = 0; i < 12; i++) {
 				tempDistance = tempDistance
@@ -506,8 +522,8 @@ public class WeatherMapReduce {
 			for (int i = 1; i < k; i++) {
 
 				String[] centroidValues = conf.get("oldcentroid:" + i).split(",");
-				String centroidTempArr[] = centroidValues[0].split(";");
-				String centroidHumidityArr[] = centroidValues[1].split(";");
+				String[] centroidTempArr = centroidValues[0].split(";");
+				String[] centroidHumidityArr = centroidValues[1].split(";");
 
 				// reset variables
 				tempDistance = 0;
@@ -560,20 +576,29 @@ public class WeatherMapReduce {
 		Configuration conf = new Configuration();
 
 		// set values based on inputs
-		// available methods: median, mean(avg)
+		// available methods: median, mean(avg), min, max
+		// default: mean
 		try {
 			conf.set("method", args[2]);
-		} catch(Exception e) {
+		} catch (Exception e) {
 //			e.printStackTrace();
 			conf.set("method", "mean");
 		}
-		
 
+		// available methods: preset, random
+		// default is preset 
+		String initMethod = null;
+
+		try {
+			initMethod = args[3];
+		} catch (Exception e) {
+			initMethod = "preset";
+		}
 
 		// First MapReduce Driver Code
 		Job job = Job.getInstance(conf);
 		job.setJarByClass(WeatherMapReduce.class);
-		job.setJobName("PreprocessAvgPerYear");
+		job.setJobName("PreprocessBasedonMonth");
 		FileInputFormat.addInputPath(job, new Path(args[0]));
 		FileOutputFormat.setOutputPath(job, new Path(args[1] + "/iteration_" + iteration));
 		job.setMapperClass(FirstMap.class);
@@ -587,7 +612,7 @@ public class WeatherMapReduce {
 		// Second MapReduce Driver Code
 		Job job2 = Job.getInstance(conf);
 		job2.setJarByClass(WeatherMapReduce.class);
-		job2.setJobName("PreprocessAvgAll");
+		job2.setJobName("PreprocessCombineMonth");
 		FileInputFormat.addInputPath(job2, new Path(args[1] + "/iteration_" + (iteration - 1)));
 		FileOutputFormat.setOutputPath(job2, new Path(args[1] + "/iteration_" + iteration));
 		job2.setMapperClass(SecondMap.class);
@@ -603,7 +628,12 @@ public class WeatherMapReduce {
 		// if-else statement
 
 		// randomise centroid's values
-		String[] oldCentroidsArray = centroidsInit(conf, args[1] + "/iteration_" + 1 + "/part-r-00000");
+		String[] oldCentroidsArray = new String[k];
+		if (initMethod.equals("random")) {
+			oldCentroidsArray = centroidsInit(conf, args[1] + "/iteration_" + 1 + "/part-r-00000");
+		} else {
+			oldCentroidsArray = centroidsInit2();
+		}
 
 		// set centroid's values
 		for (int i = 0; i < k; i++) {
@@ -637,22 +667,21 @@ public class WeatherMapReduce {
 			for (int i = 0; i < k; i++) {
 				boolean checkTemp = false;
 				boolean checkHumidity = false;
-				
-				String[] oldSplit= conf.get("oldcentroid:" + i).split(",");
-				String oldSplitTempArr[] = oldSplit[0].split(";");
-				String oldSplitHumidityArr[] = oldSplit[1].split(";");
-				
+
+				String[] oldSplit = conf.get("oldcentroid:" + i).split(",");
+				String[] oldSplitTempArr = oldSplit[0].split(";");
+				String[] oldSplitHumidityArr = oldSplit[1].split(";");
+
 				String[] newSplit = newCentroids[i].split(",");
-				String newSplitTempArr[] = newSplit[0].split(";");
-				String newSplitHumidityArr[] = newSplit[1].split(";");
-				
-				System.out.println("old temperature" + oldSplit[0]);
-				System.out.println("new temperature" + newSplit[0]);
+				String[] newSplitTempArr = newSplit[0].split(";");
+				String[] newSplitHumidityArr = newSplit[1].split(";");
 
 				for (int j = 0; j < 12; j++) {
-					checkTemp = (Math.abs(Double.parseDouble(oldSplitTempArr[j]) - Double.parseDouble(newSplitTempArr[j]))) <= threshold;
-					checkHumidity = (Math.abs(Double.parseDouble(oldSplitHumidityArr[j]) - Double.parseDouble(newSplitHumidityArr[j]))) <= threshold;
-					
+					checkTemp = (Math.abs(Double.parseDouble(oldSplitTempArr[j])
+							- Double.parseDouble(newSplitTempArr[j]))) <= threshold;
+					checkHumidity = (Math.abs(Double.parseDouble(oldSplitHumidityArr[j])
+							- Double.parseDouble(newSplitHumidityArr[j]))) <= threshold;
+
 					if (!checkTemp || !checkHumidity) {
 						// if check fails, set back to false to continue iteration
 						centroidsConverge = false;
